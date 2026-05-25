@@ -151,7 +151,18 @@ enum ResourceFolder {
             return url
         }
 
+        // ---- 0. Check if resources are embedded in the bundle itself -------
+        let bundle = Bundle(for: JohnnyScreenSaverView.self)
+        if let embeddedURL = bundle.url(forResource: "RESOURCE", withExtension: "MAP")?.deletingLastPathComponent() {
+            let containerURL = embeddedURL.appendingPathComponent("RESOURCE.001")
+            if FileManager.default.fileExists(atPath: containerURL.path) {
+                NSLog("[Johnny] ResourceFolder.resolve: Using embedded resources in bundle at %@", embeddedURL.path)
+                return embeddedURL
+            }
+        }
+
         let settings = loadSettings()
+
 
         // ---- 1. Try security-scoped bookmark --------------------------------
         if let data = settings.resourceFolderBookmark {
