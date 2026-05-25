@@ -19,6 +19,8 @@ showing it's a genuine `.saver` bundle.*
 > supply your own `RESOURCE.MAP`, `RESOURCE.001`, and `sound*.wav`
 > files — see [Getting the data files](#getting-the-data-files) below.
 
+> 📖 **Wiki do Projeto**: Acesse a [Wiki em Português](https://github.com/giattijunior/johnny-castaway-macos-screensaver/wiki) para a documentação detalhada sobre Instalação, Resolução, Opções de Configuração, Áudio Remasterizado e Segurança de Processos (Watchdog).
+
 ---
 
 ## Status
