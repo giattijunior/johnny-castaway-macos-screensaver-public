@@ -49,9 +49,15 @@ Premium Enhancements (v1.3-premium):
 
 ## Installation
 
-### Pre-packaged Installation (Recommended)
+### Pre-packaged Installation
 
-1. Download the pre-compiled `JohnnyScreenSaver.zip` from the [Releases](https://github.com/giattijunior/johnny-castaway-macos-screensaver/releases) page.
+We provide two pre-compiled packages on the [Releases](https://github.com/giattijunior/johnny-castaway-macos-screensaver/releases) page:
+
+- **`JohnnyScreenSaver-embedded.zip` (Recommended - Self-contained)**: This version includes all the Sierra game resources (`RESOURCE.MAP`, `RESOURCE.001`, and sound files) pre-embedded inside the bundle. It works immediately out-of-the-box with **zero configuration** or folder setup required.
+- **`JohnnyScreenSaver.zip` (Lightweight)**: This contains only the screensaver engine and renderer (requires you to select your own external folder containing the Sierra resources).
+
+#### Steps to install:
+1. Download either ZIP file from the [Releases](https://github.com/giattijunior/johnny-castaway-macos-screensaver/releases) page.
 2. Unzip the file to extract `JohnnyScreenSaver.saver`.
 3. Move `JohnnyScreenSaver.saver` into your user Screen Savers directory: `~/Library/Screen Savers/`.
 4. Since the bundle is ad-hoc signed (and not signed with an Apple Developer ID), strip Gatekeeper's quarantine flag so macOS allows it to load:
@@ -61,7 +67,8 @@ Premium Enhancements (v1.3-premium):
    ```
 
 5. Open **System Settings → Screen Saver** and select **JohnnyScreenSaver**.
-6. Click **Screen Saver Options...** to configure your options (folders, sound, CRT filter, clock overlay, battery saving).
+6. (Optional) Click **Screen Saver Options...** to customize premium settings (CRT filter, clock overlay, battery saving, speed, etc.). If you chose the self-contained version, the options folder setup will be bypassed automatically!
+
 
 ### Build from Source
 
