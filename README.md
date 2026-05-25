@@ -23,92 +23,58 @@ showing it's a genuine `.saver` bundle.*
 
 ## Status
 
-**v1.2** — feature-complete and stable. Tested on macOS 26 Tahoe,
-Apple Silicon. Runs unattended for hours. The multi-day story arc
-has been observed advancing naturally across real calendar days
-(raft growth, visitor scenes, holiday triggers); end-to-end
-verification of all eleven days and the cycle wrap to day 1 is
-ongoing as wall-clock days elapse.
+**v1.3-premium** — feature-complete, highly optimized and stable. Tested on macOS Sonoma, Sequoia, and Tahoe on Apple Silicon. This premium fork introduces CRT retro-rendering, battery optimization, HUD clock overlay, remastered audio, and critical process-lifecycle/audio-leak fixes.
 
 Highlights:
 
-- Full TTM/ADS bytecode interpreter (covers every opcode the canonical
-  scripts exercise)
-- Scene scheduler with day-of-story advancement, holiday detection,
-  night/day cycle
-- Walk-graph A* pathfinder
-- 11-day story arc persisted across screensaver activations (v1.1)
-- INTRO.SCR title screen with cycling wipe transitions on startup (v1.2)
-- Configure sheet with animation speed, force-day, force-holiday,
-  fidelity-mode, and debug overlay
-- 104 engine unit tests, 11 renderer tests
+- **Full TTM/ADS Bytecode Interpreter**: Covers every opcode the canonical scripts exercise.
+- **Scene Scheduler**: Paces day-of-story advancement, holiday detection (Christmas, Halloween, etc.), and night/day cycles.
+- **Walk-Graph Pathfinder**: Efficient A* pathfinding.
+- **Persistent Progress**: The 11-day story arc is persisted across screensaver activations.
+- **Intro Wipe Transitions**: Cycle transitions on startup.
+- **Configure Sheet**: Customize animation speed, force specific story days or holidays, toggle graphics fidelity, and enable/disable premium features.
+- **Comprehensive Testing Suite**: 104 engine unit tests and 11 renderer tests.
 
-v1.2 fixes:
+Premium Enhancements (v1.3-premium):
 
-- **CPU spin** — `onBackgroundTick` wave-animation closure caused a
-  Swift exclusivity spin after several hours, pegging one CPU core at
-  99%. Fixed.
-- **Sprite clipping** — SET_CLIP_ZONE was stored but not enforced in
-  sprite and rect drawing, allowing sprites to appear above the palm
-  canopy and above the island surface. Fixed.
-- **Walk to Spot.A** — walk to the leftmost anchor was incorrectly
-  skipped when the next scene started at that position. Fixed.
-- **Scene-start flicker** — one stale frame flashed when a new scene
-  began. Fixed.
-- **Cloud placement** — cloud Y formula misread `rand() % (135-N)` as
-  a lower bound rather than a range size, placing clouds too high. Fixed.
-- **Intro hang** — black screen after the intro wipe when a resource
-  failed to load. Fixed.
+- **Retro CRT Filter**: Curved tube barrel warping, vignette, scanlines, and vertical phosphor subpixel mask (aperture grille) for authentic analog display.
+- **1-Second Smooth Fade-In**: Avoids harsh visual pops when starting.
+- **Digital Clock HUD Overlay**: Pixellated retro clock overlay at the bottom right.
+- **Smart Battery Saving**: Drops frame updates to ~3 FPS if the MacBook runs on battery under 20% charge.
+- **Remastered Audio Option**: Toggle between original 1992 low-fidelity audio and modern remastered high-fidelity WAV files (with seamless fallback).
+- **macOS Sonoma/Sequoia/Tahoe Host Defenses**: Correctly registers both `legacyScreenSaver` and `WallpaperLegacyExtension` processes. Runs an invisibility frame watchdog (exits process on 10s of invisibility) and an 8-second emergency exit watchdog to guarantee background processes and audio terminate instantly on dismissal.
 
-Known limitations are listed at the bottom of this README.
 
 ---
 
 ## Installation
 
-### Pre-built (macOS 26 Tahoe, Apple Silicon)
+### Pre-packaged Installation (Recommended)
 
-If a release is published, grab the `.saver` zip from the
-[Releases](../../releases) page, then:
-
-1. Unzip — you'll get `JohnnyScreenSaver.saver`.
-2. Copy it into `~/Library/Screen Savers/`.
-3. Strip Gatekeeper's quarantine flag (the build is ad-hoc signed,
-   not Apple-Developer-ID signed):
+1. Download the pre-compiled `JohnnyScreenSaver.zip` from the [Releases](https://github.com/giattijunior/johnny-castaway-macos-screensaver/releases) page.
+2. Unzip the file to extract `JohnnyScreenSaver.saver`.
+3. Move `JohnnyScreenSaver.saver` into your user Screen Savers directory: `~/Library/Screen Savers/`.
+4. Since the bundle is ad-hoc signed (and not signed with an Apple Developer ID), strip Gatekeeper's quarantine flag so macOS allows it to load:
 
    ```sh
    xattr -dr com.apple.quarantine ~/Library/Screen\ Savers/JohnnyScreenSaver.saver
    ```
 
-   *(Without this step, double-clicking the `.saver` will fail with
-   "JohnnyScreenSaver cannot be opened because the developer cannot
-   be verified."  An alternative is right-click → Open the first
-   time, then accept the warning.)*
+5. Open **System Settings → Screen Saver** and select **JohnnyScreenSaver**.
+6. Click **Screen Saver Options...** to configure your options (folders, sound, CRT filter, clock overlay, battery saving).
 
-4. Open System Settings → Screen Saver → choose JohnnyScreenSaver.
-5. Click **Screen Saver Options…**, point it at the folder
-   containing your Sierra data files (see below), enable sound if
-   you want it, choose a story-day or fidelity mode if you want.
-
-### Build from source
+### Build from Source
 
 Requires Xcode 16+ (Swift 6 toolchain) on Apple Silicon.
 
 ```sh
-git clone https://github.com/tallPete/JohnnyCastaway.git
-cd JohnnyCastaway
+git clone https://github.com/giattijunior/johnny-castaway-macos-screensaver.git
+cd johnny-castaway-macos-screensaver
 bash Apps/JohnnyScreenSaver/Scripts/build-saver.sh --install --reload
 ```
 
-The script ad-hoc codesigns the bundle, copies it into
-`~/Library/Screen Savers/`, and kills the running `legacyScreenSaver`
-process so the new build is picked up. You can also build the
-engine and tests via SwiftPM:
+The build script compiles the release target, codesigns the bundle, installs it to `~/Library/Screen Savers/`, and kills any running screensaver extensions so your changes apply immediately.
 
-```sh
-cd Packages/JohnnyEngine && swift test          # 104 engine tests
-cd Packages/JohnnyMetalRenderer && swift test   # 11 renderer tests
-```
 
 ---
 
@@ -287,22 +253,11 @@ review cadence is best-effort.
 
 ---
 
-## Known limitations
+## Known Limitations & Design Choices
 
-- **macOS 26 Tahoe orphan process.** When System Settings'
-  screensaver preview is dismissed, the host `legacyScreenSaver`
-  process can be left running in the background. A manual `killall legacyScreenSaver` cleans it
-  up. Defending against this from inside the bundle is documented
-  in `JohnnyScreenSaverView.swift` as a work in progress.
-- **No CRT shader.** The renderer is nearest-neighbour pixel-
-  perfect; a Phase 7 polish item would add a CRT/scanline filter.
-- **Sound playback.** Default off. Plays at native sample rate
-  (matches the original Sierra and jc_reborn).
-- **`STAND.ADS` long ambient cycle.** Some idle scenes form a
-  self-sustaining `IF_LASTPLAYED` chunk graph that the original
-  Sierra cut short via wall-clock pacing pressure we don't
-  reproduce. Bounded by an 8000-tick watchdog (~10 minutes worst
-  case). See commit `f797d0c` for details.
+- **`STAND.ADS` long ambient cycle**: Some idle scenes form a self-sustaining `IF_LASTPLAYED` chunk graph that the original Sierra cut short via wall-clock pacing pressure we do not reproduce. We bound this with an 8000-tick watchdog (~10 minutes worst case). See commit `f797d0c` for details.
+- **Audio Sample Rate**: Sound plays at its native 1992 sample rate, reproducing the original game audio perfectly. The remastered toggle allows using higher quality custom audio files if placed in the `remastered` folder.
+
 
 ---
 
