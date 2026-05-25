@@ -236,13 +236,8 @@ project provides no copies and takes no ownership claim over them.
 
 ## Development
 
-This codebase was developed in collaboration with Anthropic's Claude
-(via Claude Code). Co-authorship is recorded in commit trailers
-(`Co-Authored-By: Claude …`).
+The architecture follows the original plan in phases 0–6 plus visual and audio polish. Tests are split per-package:
 
-The architecture follows the original plan in
-`Native macOS Johnny Castaway Screensaver — Plan.md` — phases 0–6
-plus v1.1 polish. Tests are split per-package:
 
 - `Packages/JohnnyEngine/Tests/` — engine logic (103 tests)
 - `Packages/JohnnyMetalRenderer/Tests/` — letterbox geometry (11 tests)
