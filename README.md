@@ -168,20 +168,34 @@ controls.
 
 ---
 
-## Configure sheet options
+## Resolution & Scaling Modes
 
-| Setting              | Default        | Notes                              |
-|----------------------|----------------|------------------------------------|
-| Resource folder      | (unset)        | Required; security-scoped bookmark |
-| Enable sounds        | Off            | Default off due to Tahoe preview-pane orphan behaviour; toggle on if you want audio |
-| Animation speed      | 1.0×           | 0.5× / 1× / 1.5× / 2×              |
-| Story day            | Auto           | Override the 11-day arc for testing |
-| Force holiday        | Off            | Halloween / St Patrick / Christmas / NY |
-| Engine fidelity      | Fixed          | Fixed (Go-port corrections) / Raw (jc_reborn) |
-| Show debug overlay   | Off            | Day / threads / opcodes / FPS HUD  |
+The original Johnny Castaway pixel art is rendered at a native resolution of **640x480 (4:3 aspect ratio)**. Modern widescreen monitors have different aspect ratios (e.g. 16:9, 16:10, 21:9). To handle this elegantly, our Metal renderer offers two scaling modes:
 
-Force-day and force-holiday are explicitly *temporary* — they don't
-overwrite the persistent natural-progression story state.
+- **Fit (Keep Background)**: Renders the full 640x480 game frame in the center. The remaining screen space is filled with a vertical deep-ocean/crepúsculo gradient background (navy blue to indigo) rendered in real-time.
+- **Fill (Fullscreen Cropped)**: Crops the original game scene proportionally to cover 100% of the screen. In a standard 16:9 monitor, this crops approximately 12.5% of the sky and 12.5% of the deep sea, resulting in a seamless fullscreen look without any distortion.
+
+---
+
+## Configure Sheet Options
+
+Open the **Screen Saver Options...** in System Settings to customize the screensaver. All settings are stored in a unified JSON database to prevent multi-process clobbering:
+
+| Option | Key | Default | Description |
+| :--- | :--- | :--- | :--- |
+| **Resource folder** | `ResourceFolderPath` | (unset) | Folder containing original Sierra resources (automatically bypassed in the self-contained package). |
+| **Enable sounds** | `SoundEnabled` | Off | Toggle sound playback (plays on the primary display only). |
+| **Use remastered audio** | `UseRemasteredAudio` | Off | Attempts to load high-fidelity custom audio files from the `remastered` subdirectory (with fallback to original audio). |
+| **Scaling mode** | `ScalingMode` | Fit | Toggle between **Fit** (letterbox with gradient background) and **Fill** (cropped fullscreen). |
+| **Enable retro CRT filter** | `CrtFilterEnabled` | Off | Enables barrel distortion (curved CRT bezel), scanlines, vignette, and an aperture-grille phosphor subpixel mask. |
+| **Show retro digital clock** | `ClockOverlayEnabled` | Off | Displays a retro digital clock overlay (`HH:mm:ss`) in the bottom-right corner. |
+| **Optimize battery on low charge** | `BatterySavingEnabled` | On | Limits frame updates to ~3 FPS if running on battery power below 20%. |
+| **Animation speed** | `AnimationSpeed` | 1.0× | Pacing speed multiplier (0.5×, 1.0×, 1.5×, 2.0×). |
+| **Story day** | `ForceStoryDay` | Auto | Overrides and pins the story progression to any day from 1 to 11 (temporary; does not overwrite persistent progress). |
+| **Force holiday** | `ForceHoliday` | Off | Overrides calendar date to force holiday triggers (Halloween, Christmas, New Year, St. Patrick's). |
+| **Engine fidelity** | `FidelityMode` | Fixed | **Fixed**: Go-port engine corrections. **Raw**: Original C/SDL2 jc_reborn engine behavior. |
+| **Show debug overlay** | `ShowDebugOverlay` | Off | Renders a real-time HUD with active threads, opcodes covered, frame rate, and current story day. |
+
 
 ---
 
