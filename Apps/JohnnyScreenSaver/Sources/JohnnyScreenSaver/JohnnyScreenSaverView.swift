@@ -27,6 +27,7 @@ import QuartzCore
 import JohnnyResources
 import JohnnyEngine
 import JohnnyMetalRenderer
+import IOKit.ps
 
 /// Fires once when the dylib is dlopened by the host. Lets us prove
 /// the bundle loaded (in System Settings or legacyScreenSaver) before
@@ -60,6 +61,15 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
     /// Animation-speed multiplier captured at startup (settings sheet).
     /// 1.0 = faithful pacing; 2.0 doubles speed; 0.5 halves it.
     private var animationSpeed: Double = 1.0
+
+    /// Wall-clock time when the animation started. Used for the fade-in shader.
+    private var startTime: CFTimeInterval = 0
+
+    /// Clock overlay HUD displayed when enabled.
+    private var clockOverlay: NSTextField?
+
+    /// Frame counter for how long the view has been invisible.
+    private var invisibleFrameCounter: Int = 0
 
     // ---- Debug overlay (only created when ResourceFolder.debugOverlayEnabled) ----
 
@@ -110,7 +120,8 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
     //     kill the preview process.
 
     private static let isInLegacyScreenSaver: Bool = {
-        ProcessInfo.processInfo.processName.lowercased().contains("legacyscreensaver")
+        let name = ProcessInfo.processInfo.processName.lowercased()
+        return name.contains("legacyscreensaver") || name.contains("wallpaperlegacyextension")
     }()
 
     /// True if the most recent startAnimation was on a full-screen sized
@@ -216,7 +227,12 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
               NSStringFromSize(window?.frame.size ?? .zero))
 
         super.startAnimation()
+        startTime = CACurrentMediaTime()
         startupIfNeeded()
+
+        if ResourceFolder.clockOverlayEnabled {
+            installClockOverlay()
+        }
 
         // First-run / error-recovery onboarding: if the engine didn't
         // start (no folder configured, or archive failed to load), show
@@ -311,6 +327,8 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
         }
         do {
             renderer = try EngineRenderer(device: device)
+            renderer?.scalingMode = ResourceFolder.scalingMode
+            renderer?.crtFilterEnabled = ResourceFolder.crtFilterEnabled
             NSLog("[Johnny] startupIfNeeded: renderer created")
         } catch {
             NSLog("[Johnny] startupIfNeeded: renderer error — %@", error.localizedDescription)
@@ -327,12 +345,16 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
 
         // 3. Sound sink — create before the StoryRunner so the sink's
         //    AVAudioPlayers are preloaded from the same folder.
-        if ResourceFolder.soundEnabled {
-            soundSink = AVAudioPlayerSoundSink(folder: folder)
-            NSLog("[Johnny] startupIfNeeded: sound ON")
+        //    Only enable sound on the primary display (origin at 0,0) and not in preview
+        //    to avoid multiple screens playing audio in parallel (causing echo) or runaway preview audio.
+        let isPrimaryDisplay = (self.window == nil || self.window?.screen == NSScreen.screens.first)
+        if ResourceFolder.soundEnabled && !isPreview && isPrimaryDisplay {
+            soundSink = AVAudioPlayerSoundSink(folder: folder, useRemastered: ResourceFolder.useRemasteredAudio)
+            NSLog("[Johnny] startupIfNeeded: sound ON (primary display)")
         } else {
             soundSink = NullSoundSink()
-            NSLog("[Johnny] startupIfNeeded: sound OFF")
+            NSLog("[Johnny] startupIfNeeded: sound OFF (isPreview=%d, isPrimaryDisplay=%d)",
+                  isPreview ? 1 : 0, isPrimaryDisplay ? 1 : 0)
         }
 
         // 4. Parse archive + spin up StoryRunner
@@ -591,6 +613,7 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
         soundSink   = NullSoundSink()   // drop AVAudioPlayer instances
         ResourceFolder.stopAccessing()  // release security-scoped sandbox token
         removeDebugOverlay()
+        removeClockOverlay()
         // If we never successfully loaded, allow the picker to reappear
         // next time startAnimation fires (e.g. user dismisses screensaver
         // then re-triggers the hot corner without ever having configured).
@@ -604,6 +627,22 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
     // ---------------------------------------------------------------
 
     public override func animateOneFrame() {
+        guard let window = self.window, window.isVisible else {
+            soundSink.stopAll()
+            if Self.isInLegacyScreenSaver {
+                invisibleFrameCounter += 1
+                // animateOneFrame interval is 1.0 / 100.0s (10ms).
+                // 10 seconds = 1000 frames.
+                if invisibleFrameCounter >= 1000 {
+                    NSLog("[Johnny] leak detector: invisible for 10s — forcing exit(0)")
+                    teardown()
+                    exit(0)
+                }
+            }
+            return
+        }
+        invisibleFrameCounter = 0
+
         // Orphan detection.
         //
         // Tahoe sometimes leaks our process: the host that spawned us
@@ -638,11 +677,18 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
         guard let metalLayer = layer as? CAMetalLayer,
               let renderer   = renderer else { return }
 
+        let now = CACurrentMediaTime()
+        renderer.timeSinceStart = Float(now - startTime)
+
+        if isBatteryCritical() {
+            // Drop FPS to save battery if we are on low battery charge
+            lastMiniMS = max(300, lastMiniMS)
+        }
+
         // Pace engine ticks against the previous tick's `mini`, scaled by
         // the user's animation-speed multiplier.  Higher multiplier =>
         // shorter wall-clock interval between ticks => faster animation.
         if let runner = storyRunner {
-            let now       = CACurrentMediaTime()
             let elapsedMS = (now - lastTickWall) * 1000.0
             if elapsedMS >= Double(lastMiniMS) {
                 do {
@@ -687,6 +733,9 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
         guard let drawable = metalLayer.nextDrawable() else { return }
         renderer.render(to: drawable, drawableSize: metalLayer.drawableSize)
 
+        // Update the clock overlay
+        if clockOverlay != nil { updateClockOverlay() }
+
         // Update the debug HUD (cheap; only allocates a string once per frame).
         if debugOverlay != nil { updateDebugOverlay() }
     }
@@ -708,8 +757,10 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
         ) { [weak self] _ in
             guard let self else { return }
             NSLog("[Johnny] received com.apple.screensaver.didstop")
-            self.teardown()
-            self.scheduleEmergencyExitIfNeeded()
+            Task { @MainActor in
+                self.teardown()
+                self.scheduleEmergencyExitIfNeeded()
+            }
         }
     }
 
@@ -847,10 +898,69 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
 
     @objc public override var configureSheet: NSWindow? {
         NSLog("[Johnny] configureSheet getter called")
-        let win = ConfigureSheetController.shared.window
+        let controller = ConfigureSheetController.shared
+        let win = controller.window
+        controller.refreshLabels()
         NSLog("[Johnny] configureSheet returning window=%@ visible=%d",
               String(describing: win), win.isVisible ? 1 : 0)
         return win
+    }
+
+    // ---------------------------------------------------------------
+    // MARK: Clock Overlay (HUD)
+    // ---------------------------------------------------------------
+
+    private func installClockOverlay() {
+        guard clockOverlay == nil else { return }
+        let label = NSTextField(labelWithString: "")
+        label.font = NSFont.monospacedSystemFont(ofSize: 18, weight: .bold)
+        label.textColor = .white
+        label.backgroundColor = NSColor.black.withAlphaComponent(0.65)
+        label.drawsBackground = true
+        label.alignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20),
+            label.widthAnchor.constraint(equalToConstant: 120),
+            label.heightAnchor.constraint(equalToConstant: 32)
+        ])
+        clockOverlay = label
+        updateClockOverlay()
+        NSLog("[Johnny] clock overlay installed")
+    }
+
+    private func removeClockOverlay() {
+        clockOverlay?.removeFromSuperview()
+        clockOverlay = nil
+    }
+
+    private func updateClockOverlay() {
+        guard let label = clockOverlay else { return }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        label.stringValue = formatter.string(from: Date())
+    }
+
+    // ---------------------------------------------------------------
+    // MARK: Battery Checker
+    // ---------------------------------------------------------------
+
+    private func isBatteryCritical() -> Bool {
+        guard ResourceFolder.batterySavingEnabled else { return false }
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else { return false }
+        guard let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] else { return false }
+        for source in sources {
+            guard let desc = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any] else { continue }
+            let isCharging = desc[kIOPSIsChargingKey] as? Bool ?? false
+            let capacity = desc[kIOPSCurrentCapacityKey] as? Int ?? 100
+            let powerSource = desc[kIOPSPowerSourceStateKey] as? String ?? ""
+            if powerSource == kIOPSBatteryPowerValue && capacity < 20 && !isCharging {
+                return true
+            }
+        }
+        return false
     }
 }
 

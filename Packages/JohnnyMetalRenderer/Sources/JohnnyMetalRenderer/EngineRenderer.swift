@@ -54,6 +54,13 @@ private struct Uniforms {
     /// (left, top, right, bottom) in Metal NDC [-1, 1].
     /// NDC +y = up; so top > bottom.
     var gameRect: SIMD4<Float>
+    var crtEnabled: Int32
+    var timeSinceStart: Float
+}
+
+public enum ScalingMode: String, Codable, CaseIterable, Sendable {
+    case fit = "fit"
+    case fill = "fill"
 }
 
 // MARK: - EngineRenderer
@@ -63,6 +70,16 @@ private struct Uniforms {
 /// Not thread-safe. Call all methods from the same thread (typically the main
 /// thread, driven by JohnnyMetalView's CADisplayLink).
 public final class EngineRenderer {
+
+    /// Whether to fit the game inside the screen with gradient bars (fit)
+    /// or crop it to fill the entire screen (fill).
+    public var scalingMode: ScalingMode = .fit
+
+    /// Whether the CRT retro filter (scanlines, distortion) is enabled.
+    public var crtFilterEnabled: Bool = false
+
+    /// Time in seconds since the screensaver was started.
+    public var timeSinceStart: Float = 0.0
 
     // ---------------------------------------------------------------
     // MARK: Metal state
@@ -213,10 +230,17 @@ public final class EngineRenderer {
 
         encoder.setRenderPipelineState(pipelineState)
 
-        var uniforms = Uniforms(gameRect: Self.gameRect(for: drawableSize))
+        var uniforms = Uniforms(
+            gameRect: Self.gameRect(for: drawableSize, mode: scalingMode),
+            crtEnabled: crtFilterEnabled ? 1 : 0,
+            timeSinceStart: timeSinceStart
+        )
         encoder.setVertexBytes(&uniforms,
                                length: MemoryLayout<Uniforms>.stride,
                                index: 0)
+        encoder.setFragmentBytes(&uniforms,
+                                 length: MemoryLayout<Uniforms>.stride,
+                                 index: 0)
 
         encoder.setFragmentTexture(framebufferTexture, index: 0)
         encoder.setFragmentTexture(paletteTexture,    index: 1)
@@ -237,25 +261,26 @@ public final class EngineRenderer {
     /// Returns `SIMD4<Float>(left, top, right, bottom)` in Metal NDC
     /// (x ∈ [-1,1], y ∈ [-1,1] with +y upward).
     ///
-    /// Scale: `k = min(W/640, H/480)`, fractional permitted so the
-    /// game fills the available area on every monitor regardless of
-    /// its pixel dimensions.  At non-integer scales the shader's
-    /// `texture.read()` introduces minor row/column unevenness (some
-    /// source pixels span N screen pixels, neighbours span N+1) — for
-    /// the cartoon content that's a worthwhile trade for a true
-    /// full-screen presentation.  Previously this floored to integer,
-    /// which left visible bars on every monitor whose height wasn't a
-    /// clean multiple of 480 (e.g. 88.9% fill on a 4K external).
-    /// The game area is centred; the surrounding margin is cleared to
-    /// black by the render pass clear colour.
-    public static func gameRect(for drawableSize: CGSize) -> SIMD4<Float> {
+    /// Scale: `k = min(W/640, H/480)` (fit) or `max(W/640, H/480)` (fill),
+    /// fractional permitted so the game fills the available area on every
+    /// monitor regardless of its pixel dimensions. At non-integer scales
+    /// the shader's `texture.read()` introduces minor row/column unevenness
+    /// — for the cartoon content that's a worthwhile trade for a true
+    /// full-screen presentation.
+    /// The game area is centred; any surrounding margin (in fit mode) is cleared
+    /// to black by the render pass clear colour.
+    public static func gameRect(for drawableSize: CGSize, mode: ScalingMode = .fit) -> SIMD4<Float> {
         let dw = Double(drawableSize.width)
         let dh = Double(drawableSize.height)
 
-        // Fractional scale that maxes-out the limiting axis.  Tiny
-        // drawables (< 640×480) shrink proportionally rather than
-        // overflowing the display.
-        let k  = min(dw / 640.0, dh / 480.0)
+        // Fractional scale that maxes-out the limiting axis (min) or filling axis (max).
+        // Tiny drawables (< 640×480) shrink proportionally rather than overflowing the display.
+        let k: Double
+        if mode == .fill {
+            k = max(dw / 640.0, dh / 480.0)
+        } else {
+            k = min(dw / 640.0, dh / 480.0)
+        }
         let gw = 640.0 * k
         let gh = 480.0 * k
 

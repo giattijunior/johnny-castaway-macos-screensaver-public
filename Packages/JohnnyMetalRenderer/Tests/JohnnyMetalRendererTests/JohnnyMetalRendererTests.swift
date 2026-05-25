@@ -90,6 +90,19 @@ struct GameRectTests {
         #expect(r.w ≈ -1.0, "no bottom margin — height fully used")
     }
 
+    @Test("1920×1080: aspect fill mode scales to 3×, cropping vertically")
+    func hdResolutionAspectFill() {
+        // k = max(1920/640, 1080/480) = max(3.0, 2.25) = 3.0
+        // gw = 1920, gh = 1440; ox = 0, oy = -180
+        let r = EngineRenderer.gameRect(for: CGSize(width: 1920, height: 1080), mode: .fill)
+        #expect(r.x ≈ -1.0, "left should cover exact screen edge")
+        #expect(r.z ≈  1.0, "right should cover exact screen edge")
+        // top = 1.0 - (-180.0 / 1080.0 * 2.0) = 1.0 + 0.3333 = 1.3333
+        // bottom = 1.0 - ((-180.0 + 1440.0) / 1080.0 * 2.0) = 1.0 - 2.3333 = -1.3333
+        #expect(r.y ≈  1.3333, "top should overflow screen edge")
+        #expect(r.w ≈ -1.3333, "bottom should overflow screen edge")
+    }
+
     @Test("3840×2160 (4K): fractional 4.5× fills height edge-to-edge")
     func uhd4KResolution() {
         // k = min(3840/640, 2160/480) = min(6.0, 4.5) = 4.5

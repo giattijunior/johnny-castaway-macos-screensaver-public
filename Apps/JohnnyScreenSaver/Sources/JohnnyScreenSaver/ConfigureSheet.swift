@@ -33,10 +33,15 @@ final class ConfigureSheetController: NSObject {
     private var statusLabel:    NSTextField!
     private var pathLabel:      NSTextField!
     private var soundCheckbox:  NSButton!
+    private var remasteredAudioCheckbox: NSButton!
     private var speedPopup:     NSPopUpButton!
     private var dayPopup:       NSPopUpButton!
     private var holidayPopup:   NSPopUpButton!
     private var fidelityPopup:  NSPopUpButton!
+    private var scalingPopup:   NSPopUpButton!
+    private var crtCheckbox:    NSButton!
+    private var clockCheckbox:  NSButton!
+    private var batteryCheckbox:NSButton!
     private var debugCheckbox:  NSButton!
 
     // Layout constants — single source of truth so we can adjust the
@@ -53,7 +58,7 @@ final class ConfigureSheetController: NSObject {
     // ---------------------------------------------------------------
 
     private func makeWindow() -> NSWindow {
-        let H: CGFloat = 500
+        let H: CGFloat = 626
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: H),
             styleMask: [.titled],
@@ -113,6 +118,16 @@ final class ConfigureSheetController: NSObject {
         soundCheckbox.state = ResourceFolder.soundEnabled ? .on : .off
         content.addSubview(soundCheckbox)
 
+        y -= 26
+        remasteredAudioCheckbox = NSButton(
+            checkboxWithTitle: "Use remastered audio (if present in 'remastered' subfolder)",
+            target: self,
+            action: #selector(remasteredAudioToggled)
+        )
+        remasteredAudioCheckbox.frame = NSRect(x: leftMargin, y: y, width: 440, height: 22)
+        remasteredAudioCheckbox.state = ResourceFolder.useRemasteredAudio ? .on : .off
+        content.addSubview(remasteredAudioCheckbox)
+
         y -= sectionGap
         addSeparator(to: content, y: y)
 
@@ -159,6 +174,45 @@ final class ConfigureSheetController: NSObject {
         fidelityPopup.selectItem(withTag: ResourceFolder.fidelityMode == .fixed ? 0 : 1)
         addRow(label: "Engine fidelity:", control: fidelityPopup, to: content, y: y)
 
+        y -= rowHeight
+        scalingPopup = makePopup(
+            target: #selector(scalingChanged),
+            items: ["Fit (keep background)", "Fill (fullscreen cropped)"],
+            tags:  [0, 1]
+        )
+        scalingPopup.selectItem(withTag: ResourceFolder.scalingMode == .fit ? 0 : 1)
+        addRow(label: "Scaling mode:", control: scalingPopup, to: content, y: y)
+
+        y -= 26
+        crtCheckbox = NSButton(
+            checkboxWithTitle: "Enable retro CRT filter (scanlines, screen curvature)",
+            target: self,
+            action: #selector(crtToggled)
+        )
+        crtCheckbox.frame = NSRect(x: leftMargin, y: y, width: 440, height: 22)
+        crtCheckbox.state = ResourceFolder.crtFilterEnabled ? .on : .off
+        content.addSubview(crtCheckbox)
+
+        y -= 26
+        clockCheckbox = NSButton(
+            checkboxWithTitle: "Show retro digital clock",
+            target: self,
+            action: #selector(clockToggled)
+        )
+        clockCheckbox.frame = NSRect(x: leftMargin, y: y, width: 440, height: 22)
+        clockCheckbox.state = ResourceFolder.clockOverlayEnabled ? .on : .off
+        content.addSubview(clockCheckbox)
+
+        y -= 26
+        batteryCheckbox = NSButton(
+            checkboxWithTitle: "Optimize battery on low charge (reduce FPS under 20%)",
+            target: self,
+            action: #selector(batteryToggled)
+        )
+        batteryCheckbox.frame = NSRect(x: leftMargin, y: y, width: 440, height: 22)
+        batteryCheckbox.state = ResourceFolder.batterySavingEnabled ? .on : .off
+        content.addSubview(batteryCheckbox)
+
         y -= sectionGap
         addSeparator(to: content, y: y)
 
@@ -196,6 +250,18 @@ final class ConfigureSheetController: NSObject {
         content.addSubview(done)
 
         refreshLabels()
+        
+        // Temporary debug log to trace sandbox behavior
+        let debugMsg = """
+        [Debug] makeWindow called
+        [Debug] Bundle ID: \(Bundle(for: JohnnyScreenSaverView.self).bundleIdentifier ?? "nil")
+        [Debug] Process Name: \(ProcessInfo.processInfo.processName)
+        [Debug] soundEnabled: \(ResourceFolder.soundEnabled)
+        [Debug] displayPath: \(ResourceFolder.displayPath ?? "nil")
+        \n
+        """
+        try? debugMsg.write(toFile: "/tmp/johnny_debug.log", atomically: true, encoding: .utf8)
+
         return win
     }
 
@@ -245,7 +311,8 @@ final class ConfigureSheetController: NSObject {
         return candidates.min(by: { abs($0 - target) < abs($1 - target) }) ?? 100
     }
 
-    private func refreshLabels() {
+    func refreshLabels() {
+        guard soundCheckbox != nil else { return }
         if let path = ResourceFolder.displayPath {
             pathLabel.stringValue = "Configured: \(path)"
             pathLabel.textColor   = .secondaryLabelColor
@@ -255,6 +322,11 @@ final class ConfigureSheetController: NSObject {
         }
         statusLabel.stringValue = ""
         soundCheckbox.state = ResourceFolder.soundEnabled ? .on : .off
+        remasteredAudioCheckbox.state = ResourceFolder.useRemasteredAudio ? .on : .off
+        scalingPopup.selectItem(withTag: ResourceFolder.scalingMode == .fit ? 0 : 1)
+        crtCheckbox.state = ResourceFolder.crtFilterEnabled ? .on : .off
+        clockCheckbox.state = ResourceFolder.clockOverlayEnabled ? .on : .off
+        batteryCheckbox.state = ResourceFolder.batterySavingEnabled ? .on : .off
         debugCheckbox.state = ResourceFolder.debugOverlayEnabled ? .on : .off
     }
 
@@ -284,7 +356,22 @@ final class ConfigureSheetController: NSObject {
     }
 
     @objc private func soundToggled() {
-        ResourceFolder.soundEnabled = (soundCheckbox.state == .on)
+        let oldVal = ResourceFolder.soundEnabled
+        let newVal = (soundCheckbox.state == .on)
+        ResourceFolder.soundEnabled = newVal
+        
+        let appendMsg = "[Debug] soundToggled: oldVal=\(oldVal) newVal=\(newVal) verify=\(ResourceFolder.soundEnabled)\n"
+        if let fileHandle = FileHandle(forWritingAtPath: "/tmp/johnny_debug.log") {
+            fileHandle.seekToEndOfFile()
+            if let data = appendMsg.data(using: .utf8) {
+                fileHandle.write(data)
+            }
+            fileHandle.closeFile()
+        }
+    }
+
+    @objc private func remasteredAudioToggled() {
+        ResourceFolder.useRemasteredAudio = (remasteredAudioCheckbox.state == .on)
     }
 
     @objc private func debugToggled() {
@@ -308,8 +395,27 @@ final class ConfigureSheetController: NSObject {
         ResourceFolder.fidelityMode = (fidelityPopup.selectedTag() == 0) ? .fixed : .raw
     }
 
+    @objc private func scalingChanged() {
+        ResourceFolder.scalingMode = (scalingPopup.selectedTag() == 0) ? .fit : .fill
+    }
+
+    @objc private func crtToggled() {
+        ResourceFolder.crtFilterEnabled = (crtCheckbox.state == .on)
+    }
+
+    @objc private func clockToggled() {
+        ResourceFolder.clockOverlayEnabled = (clockCheckbox.state == .on)
+    }
+
+    @objc private func batteryToggled() {
+        ResourceFolder.batterySavingEnabled = (batteryCheckbox.state == .on)
+    }
+
     @objc private func doneClicked() {
-        window.sheetParent?.endSheet(window)
-        window.orderOut(nil)
+        if let sheetParent = window.sheetParent {
+            sheetParent.endSheet(window)
+        } else {
+            window.orderOut(nil)
+        }
     }
 }

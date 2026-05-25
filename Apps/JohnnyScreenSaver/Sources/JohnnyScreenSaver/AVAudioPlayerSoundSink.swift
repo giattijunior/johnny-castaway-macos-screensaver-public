@@ -30,9 +30,21 @@ final class AVAudioPlayerSoundSink: SoundSink, @unchecked Sendable {
 
     /// Eagerly load all present sound files from `folder` so that
     /// `playSample()` never blocks on I/O.
-    init(folder: URL) {
+    init(folder: URL, useRemastered: Bool) {
+        let remasteredFolder = folder.appendingPathComponent("remastered", isDirectory: true)
         for id in 0 ... 24 {
-            let url = folder.appendingPathComponent("sound\(id).wav")
+            let url: URL
+            if useRemastered {
+                let remURL = remasteredFolder.appendingPathComponent("sound\(id).wav")
+                if FileManager.default.fileExists(atPath: remURL.path) {
+                    url = remURL
+                } else {
+                    url = folder.appendingPathComponent("sound\(id).wav")
+                }
+            } else {
+                url = folder.appendingPathComponent("sound\(id).wav")
+            }
+
             guard let player = try? AVAudioPlayer(contentsOf: url) else {
                 // Missing files (sound11, sound13, …) are normal — skip silently.
                 continue
@@ -40,7 +52,7 @@ final class AVAudioPlayerSoundSink: SoundSink, @unchecked Sendable {
             player.prepareToPlay()
             players[id] = player
         }
-        NSLog("[Johnny] AVAudioPlayerSoundSink: loaded %d/25 sound file(s)", players.count)
+        NSLog("[Johnny] AVAudioPlayerSoundSink: loaded %d/25 sound file(s) (useRemastered=%d)", players.count, useRemastered ? 1 : 0)
     }
 
     // MARK: SoundSink
@@ -70,6 +82,7 @@ final class AVAudioPlayerSoundSink: SoundSink, @unchecked Sendable {
     /// reference can be re-played by a stray engine tick.  Dropping the
     /// dictionary here forces immediate teardown of all audio queues.
     func stopAll() {
+        guard !players.isEmpty else { return }
         current?.stop()
         current = nil
         // Stop every loaded player first (in case any other reference
