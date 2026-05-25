@@ -46,3 +46,12 @@ DerivedData/
 # --- Local Wiki docs --------------------------------------------------
 wiki-docs/
 
+# --- Local game assets / development source files --------------------
+assets/
+assets
+*assets/
+*.zip
+*.heic
+*.saver
+
+
