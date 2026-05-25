@@ -20,12 +20,14 @@ set -euo pipefail
 CONFIG="release"
 INSTALL=0
 RELOAD=0
+EMBED_ASSETS=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --debug)   CONFIG="debug";   shift ;;
-        --install) INSTALL=1;        shift ;;
-        --reload)  RELOAD=1;         shift ;;
+        --debug)        CONFIG="debug";   shift ;;
+        --install)      INSTALL=1;        shift ;;
+        --reload)       RELOAD=1;         shift ;;
+        --embed-assets) EMBED_ASSETS=1;   shift ;;
         *) echo "unknown flag: $1" >&2; exit 1 ;;
     esac
 done
@@ -71,12 +73,32 @@ for cand in "${METALLIB_CANDIDATES[@]}"; do
     fi
 done
 
+# Optionally embed assets into the bundle resources.
+if [[ $EMBED_ASSETS -eq 1 ]]; then
+    ASSETS_DIR="../../../assets"
+    if [[ -d "$ASSETS_DIR" ]]; then
+        echo "==> Embedding assets from $ASSETS_DIR into bundle resources…"
+        # Copy RESOURCE.MAP, RESOURCE.001, and sound files (including remastered folder)
+        cp "$ASSETS_DIR"/RESOURCE.* "$SAVER_BUNDLE/Contents/Resources/"
+        if ls "$ASSETS_DIR"/sound*.wav &>/dev/null; then
+            cp "$ASSETS_DIR"/sound*.wav "$SAVER_BUNDLE/Contents/Resources/"
+        fi
+        if [[ -d "$ASSETS_DIR/remastered" ]]; then
+            cp -R "$ASSETS_DIR/remastered" "$SAVER_BUNDLE/Contents/Resources/"
+        fi
+    else
+        echo "Error: assets directory not found at $ASSETS_DIR" >&2
+        exit 1
+    fi
+fi
+
 # Sanity: require the principal class to be present in the binary.
 if ! nm -gU "$SAVER_BUNDLE/Contents/MacOS/$SAVER_NAME" 2>/dev/null \
         | grep -q "_OBJC_CLASS_\$_JohnnyScreenSaverView"; then
     echo "WARNING: principal class _OBJC_CLASS_\$_JohnnyScreenSaverView not exported" >&2
     echo "  legacyScreenSaver may fail to instantiate the view." >&2
 fi
+
 
 echo "==> Signing bundle (ad-hoc)…"
 # Strip any Finder metadata / resource forks first — codesign refuses to
