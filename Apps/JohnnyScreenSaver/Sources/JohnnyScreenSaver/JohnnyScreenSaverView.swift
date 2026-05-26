@@ -124,6 +124,11 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
         return name.contains("legacyscreensaver") || name.contains("wallpaperlegacyextension")
     }()
 
+    fileprivate static let isWallpaperProcess: Bool = {
+        let name = ProcessInfo.processInfo.processName.lowercased()
+        return name.contains("wallpaperlegacyextension")
+    }()
+
     private static var activeConfigController: ConfigureSheetController?
 
     /// True if the most recent startAnimation was on a full-screen sized
@@ -222,9 +227,10 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
         if let w = window {
             wasFullScreenAtStart = (w.frame.width >= 800 && w.frame.height >= 600)
         }
-        NSLog("[Johnny] startAnimation: wasFullScreenAtStart=%d windowSize=%@",
+        NSLog("[Johnny] startAnimation: wasFullScreenAtStart=%d windowSize=%@ isPreview=%d",
               wasFullScreenAtStart ? 1 : 0,
-              NSStringFromSize(window?.frame.size ?? .zero))
+              NSStringFromSize(window?.frame.size ?? .zero),
+              isPreview ? 1 : 0)
 
         super.startAnimation()
         startTime = CACurrentMediaTime()
@@ -290,9 +296,12 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
             if w.frame.width >= 800 && w.frame.height >= 600 {
                 wasFullScreenAtStart = true
             }
-            NSLog("[Johnny] viewDidMoveToWindow: window size=%@ level=%d wasFullScreenAtStart=%d",
-                  NSStringFromSize(w.frame.size), w.level.rawValue, wasFullScreenAtStart ? 1 : 0)
+            NSLog("[Johnny] viewDidMoveToWindow: window size=%@ level=%ld wasFullScreenAtStart=%d",
+                  NSStringFromSize(w.frame.size),
+                  Int(w.level.rawValue),
+                  wasFullScreenAtStart ? 1 : 0)
         } else {
+            NSLog("[Johnny] viewDidMoveToWindow: window=nil, tearing down")
             // Sonoma+ workaround: stopAnimation() doesn't fire
             // reliably when the screensaver dismisses. Tear down
             // explicitly when the view leaves the window so the
@@ -1070,9 +1079,9 @@ private final class LevelCheckedSoundSink: SoundSink, @unchecked Sendable {
                     let ratio = view.bounds.width / w.frame.width
                     let isFullScreen = (ratio > 0.9)
                     let isLargeWindow = (w.frame.width >= 800 && w.frame.height >= 600)
-                    let isActualScreensaver = !JohnnyScreenSaverView.isInLegacyScreenSaver || (w.level.rawValue >= NSWindow.Level.screenSaver.rawValue)
+                    let isWallpaper = JohnnyScreenSaverView.isWallpaperProcess
                     
-                    if isPrimaryDisplay && isFullScreen && isLargeWindow && isActualScreensaver {
+                    if isPrimaryDisplay && isFullScreen && isLargeWindow && !isWallpaper {
                         delegate.playSample(id)
                     }
                 }
@@ -1087,9 +1096,9 @@ private final class LevelCheckedSoundSink: SoundSink, @unchecked Sendable {
                         let ratio = view.bounds.width / w.frame.width
                         let isFullScreen = (ratio > 0.9)
                         let isLargeWindow = (w.frame.width >= 800 && w.frame.height >= 600)
-                        let isActualScreensaver = !JohnnyScreenSaverView.isInLegacyScreenSaver || (w.level.rawValue >= NSWindow.Level.screenSaver.rawValue)
+                        let isWallpaper = JohnnyScreenSaverView.isWallpaperProcess
                         
-                        if isPrimaryDisplay && isFullScreen && isLargeWindow && isActualScreensaver {
+                        if isPrimaryDisplay && isFullScreen && isLargeWindow && !isWallpaper {
                             delegate.playSample(id)
                         }
                     }
