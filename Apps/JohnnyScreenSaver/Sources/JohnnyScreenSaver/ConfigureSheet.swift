@@ -26,8 +26,6 @@ import JohnnyEngine
 @MainActor
 final class ConfigureSheetController: NSObject {
 
-    static let shared = ConfigureSheetController()
-
     private(set) lazy var window: NSWindow = makeWindow()
 
     private var statusLabel:    NSTextField!

@@ -119,10 +119,12 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
     //     pauses fire stopAnimation too, so a naive watchdog would
     //     kill the preview process.
 
-    private static let isInLegacyScreenSaver: Bool = {
+    fileprivate static let isInLegacyScreenSaver: Bool = {
         let name = ProcessInfo.processInfo.processName.lowercased()
         return name.contains("legacyscreensaver") || name.contains("wallpaperlegacyextension")
     }()
+
+    private static var activeConfigController: ConfigureSheetController?
 
     /// True if the most recent startAnimation was on a full-screen sized
     /// window.  Gates the exit watchdog so System Settings preview is never
@@ -134,8 +136,8 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
     /// next startAnimation() call.
     private var emergencyExitWork: DispatchWorkItem? = nil
 
-    /// Cached so we can unsubscribe in deinit (best-effort).
-    private var didStopObserver: NSObjectProtocol? = nil
+    /// Flag to ensure we only register the distributed and workspace observers once.
+    private var didInstallObservers: Bool = false
 
     // (Polling-based zombie detection was removed — see animateOneFrame.)
 
@@ -219,8 +221,6 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
         // installed for as long as the panel is open.
         if let w = window {
             wasFullScreenAtStart = (w.frame.width >= 800 && w.frame.height >= 600)
-        } else {
-            wasFullScreenAtStart = false
         }
         NSLog("[Johnny] startAnimation: wasFullScreenAtStart=%d windowSize=%@",
               wasFullScreenAtStart ? 1 : 0,
@@ -286,7 +286,13 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
 
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window == nil {
+        if let w = window {
+            if w.frame.width >= 800 && w.frame.height >= 600 {
+                wasFullScreenAtStart = true
+            }
+            NSLog("[Johnny] viewDidMoveToWindow: window size=%@ level=%d wasFullScreenAtStart=%d",
+                  NSStringFromSize(w.frame.size), w.level.rawValue, wasFullScreenAtStart ? 1 : 0)
+        } else {
             // Sonoma+ workaround: stopAnimation() doesn't fire
             // reliably when the screensaver dismisses. Tear down
             // explicitly when the view leaves the window so the
@@ -345,16 +351,13 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
 
         // 3. Sound sink — create before the StoryRunner so the sink's
         //    AVAudioPlayers are preloaded from the same folder.
-        //    Only enable sound on the primary display (origin at 0,0) and not in preview
-        //    to avoid multiple screens playing audio in parallel (causing echo) or runaway preview audio.
-        let isPrimaryDisplay = (self.window == nil || self.window?.screen == NSScreen.screens.first)
-        if ResourceFolder.soundEnabled && !isPreview && isPrimaryDisplay {
-            soundSink = AVAudioPlayerSoundSink(folder: folder, useRemastered: ResourceFolder.useRemasteredAudio)
-            NSLog("[Johnny] startupIfNeeded: sound ON (primary display)")
+        if ResourceFolder.soundEnabled {
+            let actualSink = AVAudioPlayerSoundSink(folder: folder, useRemastered: ResourceFolder.useRemasteredAudio)
+            soundSink = LevelCheckedSoundSink(delegate: actualSink, view: self)
+            NSLog("[Johnny] startupIfNeeded: sound sink created (wrapped with level checker)")
         } else {
             soundSink = NullSoundSink()
-            NSLog("[Johnny] startupIfNeeded: sound OFF (isPreview=%d, isPrimaryDisplay=%d)",
-                  isPreview ? 1 : 0, isPrimaryDisplay ? 1 : 0)
+            NSLog("[Johnny] startupIfNeeded: sound disabled in preferences")
         }
 
         // 4. Parse archive + spin up StoryRunner
@@ -749,19 +752,65 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
     /// ScreenSaverView callbacks (stopAnimation / viewDidMoveToWindow)
     /// don't fire.  Idempotent — only attaches once per instance.
     private func installDismissalObservers() {
-        guard didStopObserver == nil else { return }
-        didStopObserver = DistributedNotificationCenter.default().addObserver(
-            forName:   NSNotification.Name("com.apple.screensaver.didstop"),
-            object:    nil,
-            queue:     .main
-        ) { [weak self] _ in
-            guard let self else { return }
-            NSLog("[Johnny] received com.apple.screensaver.didstop")
-            Task { @MainActor in
-                self.teardown()
-                self.scheduleEmergencyExitIfNeeded()
-            }
-        }
+        guard !didInstallObservers else { return }
+        
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(handleDismissal(_:)),
+            name: NSNotification.Name("com.apple.screensaver.didstop"),
+            object: nil
+        )
+        
+        let wsCenter = NSWorkspace.shared.notificationCenter
+        wsCenter.addObserver(
+            self,
+            selector: #selector(handleSystemSleep(_:)),
+            name: NSWorkspace.willSleepNotification,
+            object: nil
+        )
+        wsCenter.addObserver(
+            self,
+            selector: #selector(handleSystemWake(_:)),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+        wsCenter.addObserver(
+            self,
+            selector: #selector(handleSystemSleep(_:)),
+            name: NSWorkspace.screensDidSleepNotification,
+            object: nil
+        )
+        wsCenter.addObserver(
+            self,
+            selector: #selector(handleSystemWake(_:)),
+            name: NSWorkspace.screensDidWakeNotification,
+            object: nil
+        )
+        
+        didInstallObservers = true
+        NSLog("[Johnny] installDismissalObservers: registered com.apple.screensaver.didstop & workspace sleep/wake observers")
+    }
+
+    @objc private func handleDismissal(_ notification: Notification) {
+        NSLog("[Johnny] received com.apple.screensaver.didstop via selector")
+        teardown()
+        scheduleEmergencyExitIfNeeded()
+    }
+
+    @objc private func handleSystemSleep(_ notification: Notification) {
+        NSLog("[Johnny] handleSystemSleep: system or display is sleeping, tearing down")
+        teardown()
+    }
+
+    @objc private func handleSystemWake(_ notification: Notification) {
+        NSLog("[Johnny] handleSystemWake: system or display woke up, starting up")
+        startTime = CACurrentMediaTime()
+        startupIfNeeded()
+    }
+
+    deinit {
+        DistributedNotificationCenter.default().removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
     /// Arm a one-shot watchdog: if we're still alive in 8 s and no
@@ -898,7 +947,8 @@ public final class JohnnyScreenSaverView: ScreenSaverView {
 
     @objc public override var configureSheet: NSWindow? {
         NSLog("[Johnny] configureSheet getter called")
-        let controller = ConfigureSheetController.shared
+        let controller = ConfigureSheetController()
+        Self.activeConfigController = controller
         let win = controller.window
         controller.refreshLabels()
         NSLog("[Johnny] configureSheet returning window=%@ visible=%d",
@@ -991,3 +1041,64 @@ private final class ClosureTarget: NSObject {
 
 private nonisolated(unsafe) var assocKeyChooseTarget: UInt8 = 0
 private nonisolated(unsafe) var assocKeyCancelTarget: UInt8 = 0
+
+// ---------------------------------------------------------------------------
+// MARK: - LevelCheckedSoundSink
+//
+// Conformance wrapper for SoundSink that checks the view's window level dynamically
+// before forwarding audio playback, ensuring that sound is only played in full screen
+// or lock screen (level >= .screenSaver) and NOT during System Settings preview.
+// ---------------------------------------------------------------------------
+
+private final class LevelCheckedSoundSink: SoundSink, @unchecked Sendable {
+    private let delegate: SoundSink
+    private weak var view: JohnnyScreenSaverView?
+
+    init(delegate: SoundSink, view: JohnnyScreenSaverView) {
+        self.delegate = delegate
+        self.view = view
+    }
+
+    func playSample(_ id: Int) {
+        guard let view = view else { return }
+        
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                guard ResourceFolder.soundEnabled else { return }
+                if let w = view.window, w.frame.width > 0 {
+                    let isPrimaryDisplay = (w.screen == NSScreen.screens.first)
+                    let ratio = view.bounds.width / w.frame.width
+                    let isFullScreen = (ratio > 0.9)
+                    let isLargeWindow = (w.frame.width >= 800 && w.frame.height >= 600)
+                    let isActualScreensaver = !JohnnyScreenSaverView.isInLegacyScreenSaver || (w.level.rawValue >= NSWindow.Level.screenSaver.rawValue)
+                    
+                    if isPrimaryDisplay && isFullScreen && isLargeWindow && isActualScreensaver {
+                        delegate.playSample(id)
+                    }
+                }
+            }
+        } else {
+            DispatchQueue.main.async { [weak view, delegate] in
+                guard let view = view else { return }
+                MainActor.assumeIsolated {
+                    guard ResourceFolder.soundEnabled else { return }
+                    if let w = view.window, w.frame.width > 0 {
+                        let isPrimaryDisplay = (w.screen == NSScreen.screens.first)
+                        let ratio = view.bounds.width / w.frame.width
+                        let isFullScreen = (ratio > 0.9)
+                        let isLargeWindow = (w.frame.width >= 800 && w.frame.height >= 600)
+                        let isActualScreensaver = !JohnnyScreenSaverView.isInLegacyScreenSaver || (w.level.rawValue >= NSWindow.Level.screenSaver.rawValue)
+                        
+                        if isPrimaryDisplay && isFullScreen && isLargeWindow && isActualScreensaver {
+                            delegate.playSample(id)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func stopAll() {
+        delegate.stopAll()
+    }
+}
