@@ -13,9 +13,14 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "JohnnyResources", targets: ["JohnnyResources"]),
+        .executable(name: "asset-dumper", targets: ["AssetDumper"]),
     ],
     targets: [
         .target(name: "JohnnyResources"),
+        .executableTarget(
+            name: "AssetDumper",
+            dependencies: ["JohnnyResources"]
+        ),
         .testTarget(
             name: "JohnnyResourcesTests",
             dependencies: ["JohnnyResources"]
