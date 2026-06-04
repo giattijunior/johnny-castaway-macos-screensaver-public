@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Johnny Castaway screensaver — Tahoe-era .appex version.plist.
+
+      ExtensionKit requires this file in addition to Info.plist. The
+      keys are not deeply documented; the Apple-built screensavers
+      (Arabesque, LockScreen) all populate at least BuildVersion,
+      CFBundleShortVersionString, and CFBundleVersion, so we mirror
+      that. SourceVersion is opaque to us — it tracks the build's
+      source control revision internally.
+    -->
+    <key>BuildVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.6</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>ProjectName</key>
+    <string>JohnnyScreenSaver</string>
+    <key>SourceVersion</key>
+    <string>0</string>
+</dict>
+</plist>

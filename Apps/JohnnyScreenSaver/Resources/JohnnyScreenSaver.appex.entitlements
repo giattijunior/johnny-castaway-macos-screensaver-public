@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Johnny Castaway screensaver — Tahoe/.appex entitlements.
+
+      Two entitlements are required for the Tahoe screen-saver host
+      to load the bundle:
+
+        com.apple.security.app-sandbox
+          Required by all ExtensionKit bundles. Without this the
+          ExtensionKit host logs "Extension is not entitled to run
+          in the App Sandbox" and the bundle is invisible to
+          pluginkit / System Settings.
+
+        com.apple.developer.extension-host.screensaver
+          The screensaver-specific extension-host entitlement. The
+          screen-saver host checks for this exact key when it
+          resolves a com.apple.screensaver extension point. Without
+          it the host loads the bundle but refuses to instantiate
+          the principal class.
+
+      The other entitlements are the minimum we need to actually
+      run the screensaver: read the user-picked resource folder,
+      play sounds through the audio server, render to the screen,
+      and persist settings.
+
+      The bundle is ad-hoc signed — there is no Apple Developer ID
+      on the signing identity, so the usual
+      `com.apple.developer.team-identifier` is omitted. macOS
+      tolerates this for user-installed extension bundles as long
+      as the bundle is in
+      ~/Library/Application Support/ExtensionKit/Extensions/.
+    -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+
+    <key>com.apple.developer.extension-host.screensaver</key>
+    <true/>
+
+    <!-- Read access to user-selected files (the resource folder the
+         user picks via the configure sheet's "Choose Folder..."
+         button). NSOpenPanel grants the file-picker scope; the
+         screensaver then writes a security-scoped bookmark
+         (handled by ResourceFolder.swift) and re-resolves it on
+         every run. -->
+    <key>com.apple.security.files.user-selected.read-only</key>
+    <true/>
+
+    <!-- Read/write the bundle's own Application Support container
+         (settings.json) — this is the screensaver's private
+         per-user preferences. -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!-- Persistent access across launches via security-scoped
+         bookmarks. Without this, the resource folder access granted
+         by NSOpenPanel is lost as soon as the screensaver
+         process exits. -->
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+</dict>
+</plist>

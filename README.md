@@ -49,19 +49,74 @@ Premium Enhancements (v1.3-premium):
 
 ## Installation
 
-### Pre-packaged Installation (Recommended)
+> **This is the public, source-only mirror.** It contains the engine,
+> renderer, and build scripts, but does **not** ship the pre-built
+> screensaver bundles or the 1992 Sierra `RESOURCE.MAP` / `RESOURCE.001`
+> files (those are © Sierra/Dynamix and are not part of the open-source
+> release). The script below will build the bundles from source and
+> prompt you for the location of the Sierra resource files.
+>
+> If you want a single-step install with everything pre-bundled, use
+> the **private** build at
+> [giattijunior/johnny-castaway-macos-screensaver/releases/tag/v1.0.0](https://github.com/giattijunior/johnny-castaway-macos-screensaver/releases/tag/v1.0.0)
+> (release tarball is 1.7 MB and includes the resource files).
 
-1. Download the pre-compiled `JohnnyScreenSaver.zip` from the [Releases](https://github.com/giattijunior/johnny-castaway-macos-screensaver/releases) page.
-2. Unzip the file to extract `JohnnyScreenSaver.saver`.
+### One-shot install (recommended)
+
+The `Release/scripts/Install.sh` script builds the screensaver bundles
+from source, codesigns the `.appex` with the Tahoe entitlements, and
+writes a `settings.json` so the screensaver finds the resource folder
+on first run (no `NSOpenPanel` dance required).
+
+```sh
+git clone https://github.com/giattijunior/johnny-castaway-macos-screensaver-public.git
+cd johnny-castaway-macos-screensaver-public
+
+# Build from source and install. You'll be prompted to point at the
+# Sierra resource directory (or pass it on the command line with
+# --resource-dir /path/to/RESOURCE.MAP-dir).
+bash Release/scripts/Install.sh --resource-dir /path/to/your/Johnny\ Castaway\ Resources/
+```
+
+If the script can't find a pre-built bundle in `Release/bundles/`, it
+auto-builds from source. Both `.saver` (Sonoma/Sequoia) and `.appex`
+(Tahoe 26.5+) are produced from the same dylib
+(`libJohnnyScreenSaver.dylib`); only the bundle wrapper and the
+`Info.plist` differ.
+
+After it finishes, open **System Settings → Screen Saver** and select
+**Johnny Castaway**.
+
+Useful flags:
+
+- `bash Release/scripts/Install.sh --resource-dir <path>` — point at
+  the folder containing `RESOURCE.MAP` + `RESOURCE.001` (any folder
+  you've already populated; the script copies the files into
+  `~/Library/Application Support/Johnny Castaway Resources/`).
+- `bash Release/scripts/Install.sh --build-from-source` — rebuild
+  the dylibs locally before installing (requires Xcode 16 / Swift 6
+  toolchain).
+- `bash Release/scripts/Install.sh --uninstall` — remove every
+  artifact the script installed.
+- `bash Release/scripts/Install.sh --verify` — just check the
+  pre-built bundles against the SHA256 manifest (skipped if not
+  vendored in the public mirror).
+
+### Pre-packaged Installation (manual)
+
+1. Download the pre-compiled `JohnnyScreenSaver.zip` from the [Releases](https://github.com/giattijunior/johnny-castaway-macos-screensaver-public/releases) page of the **public** repo (or use the **private** repo's [release tarball](https://github.com/giattijunior/johnny-castaway-macos-screensaver/releases/tag/v1.0.0) which bundles the resource files).
+2. Unzip the file to extract `JohnnyScreenSaver.saver` and `JohnnyScreenSaver.appex`.
 3. Move `JohnnyScreenSaver.saver` into your user Screen Savers directory: `~/Library/Screen Savers/`.
-4. Since the bundle is ad-hoc signed (and not signed with an Apple Developer ID), strip Gatekeeper's quarantine flag so macOS allows it to load:
+4. Move `JohnnyScreenSaver.appex` into the Tahoe ExtensionKit path: `~/Library/Application Support/ExtensionKit/Extensions/`.
+5. Since the bundle is ad-hoc signed (and not signed with an Apple Developer ID), strip Gatekeeper's quarantine flag so macOS allows it to load:
 
    ```sh
    xattr -dr com.apple.quarantine ~/Library/Screen\ Savers/JohnnyScreenSaver.saver
+   xattr -dr com.apple.quarantine ~/Library/Application\ Support/ExtensionKit/Extensions/JohnnyScreenSaver.appex
    ```
 
-5. Open **System Settings → Screen Saver** and select **JohnnyScreenSaver**.
-6. Click **Screen Saver Options...** to configure your options (folders, sound, CRT filter, clock overlay, battery saving).
+6. Open **System Settings → Screen Saver** and select **Johnny Castaway**.
+7. Click **Screen Saver Options...** to configure your options (folders, sound, CRT filter, clock overlay, battery saving).
 
 ### Build from Source
 
@@ -70,10 +125,26 @@ Requires Xcode 16+ (Swift 6 toolchain) on Apple Silicon.
 ```sh
 git clone https://github.com/giattijunior/johnny-castaway-macos-screensaver.git
 cd johnny-castaway-macos-screensaver
+
+# Build and install the legacy .saver (Sonoma/Sequoia path)
 bash Apps/JohnnyScreenSaver/Scripts/build-saver.sh --install --reload
+
+# Build and install the Tahoe .appex (macOS 26+ path)
+bash Apps/JohnnyScreenSaver/Scripts/build-appex.sh --install --reload
 ```
 
-The build script compiles the release target, codesigns the bundle, installs it to `~/Library/Screen Savers/`, and kills any running screensaver extensions so your changes apply immediately.
+Each build script compiles the release target, codesigns the bundle,
+installs it to the right Tahoe or legacy path, and kills any running
+screensaver extensions so your changes apply immediately. The legacy
+`.saver` and the Tahoe `.appex` are produced from the same dylib
+(`libJohnnyScreenSaver.dylib`); only the bundle wrapper and the
+`Info.plist` differ.
+
+The legacy `.saver` works on macOS Sonoma (14) and later. The Tahoe
+`.appex` requires macOS 26.5+ (Tahoe), where macOS moved screensaver
+loading off the `legacyScreenSaver` host onto ExtensionKit. Both
+bundles ship from the same dylib; the system picks the correct one
+for the running macOS.
 
 
 ---

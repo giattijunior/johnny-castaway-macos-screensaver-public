@@ -1,0 +1,11 @@
+version: 1.0.0
+build_date: 2026-06-04T15:50:55Z
+screensaver_id: nz.petesmith.JohnnyScreenSaver
+short_version: 0.6
+macos_minimum: 14.0 (legacy .saver) / 26.5 (Tahoe .appex)
+bundles:
+  - JohnnyScreenSaver.saver (legacy CFBundle path)
+  - JohnnyScreenSaver.appex (Tahoe ExtensionKit path)
+assets:
+  - RESOURCE.MAP (Sierra AGI v3 resource index)
+  - RESOURCE.001 (Sierra AGI v3 resource bundle, 1.17MB)

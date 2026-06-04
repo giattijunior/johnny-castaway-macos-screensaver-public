@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Johnny Castaway screensaver — Tahoe-era .appex (ExtensionKit)
+      Info.plist. Built from the same JohnnyScreenSaver.dylib as the
+      legacy .saver; only the bundle wrapper (XPC! + NSExtension
+      block) differs.
+
+      Template lifted from the built-in Arabesque.appex
+      (/System/Library/ExtensionKit/Extensions/Arabesque.appex/Contents/Info.plist).
+    -->
+
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+
+    <key>CFBundleDisplayName</key>
+    <string>Johnny Castaway</string>
+
+    <key>CFBundleExecutable</key>
+    <string>JohnnyScreenSaver</string>
+
+    <key>CFBundleIdentifier</key>
+    <string>nz.petesmith.JohnnyScreenSaver</string>
+
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+
+    <key>CFBundleName</key>
+    <string>Johnny Castaway</string>
+
+    <!-- XPC! is the ExtensionKit bundle type. The legacy .saver uses
+         BNDL; the two are mutually exclusive — a bundle can declare
+         only one. This file is for the .appex build only; the legacy
+         .saver build uses Info-legacy.plist. -->
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+
+    <key>CFBundleShortVersionString</key>
+    <string>0.6</string>
+
+    <key>CFBundleSupportedPlatforms</key>
+    <array>
+        <string>MacOSX</string>
+    </array>
+
+    <key>CFBundleVersion</key>
+    <string>1</string>
+
+    <!-- Tahoe's screen-saver host only loads this extension on
+         macOS 26.5+ (the version that introduced the
+         com.apple.screensaver extension point). Older systems fall
+         back to the legacy .saver at the same bundle id
+         (~/Library/Screen Savers/JohnnyScreenSaver.saver). -->
+    <key>LSMinimumSystemVersion</key>
+    <string>26.5</string>
+
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+
+    <!--
+      NSExtension — the contract with the screen-saver host.
+
+        NSExtensionPointIdentifier = com.apple.screensaver
+          The well-known extension point Tahoe uses for screensaver
+          plugins. (Tahoe moved screensaver loading off the legacy
+          ScreenSaver.framework NSPrincipalClass path and onto
+          ExtensionKit; see Arabesque.appex for the canonical
+          example.)
+
+        NSExtensionPointVersion = 1.0
+          The contract version of the screensaver extension point.
+
+        NSExtensionPrincipalClass = JohnnyScreensaverExtension
+          The ObjC class name (resolved at bundle load time) that
+          the host instantiates to get the extension object. Must
+          match the `@objc(JohnnyScreensaverExtension)` annotation
+          on the class declaration in
+          JohnnyScreensaverExtension.swift.
+    -->
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.screensaver</string>
+        <key>NSExtensionPointVersion</key>
+        <string>1.0</string>
+        <key>NSExtensionPrincipalClass</key>
+        <string>JohnnyScreensaverExtension</string>
+    </dict>
+
+    <!--
+      ScreenSaverViewControllerClass — the controller class the host
+      asks the extension to hand back once it has called
+      NSExtensionPrincipalClass. The controller's `.view` is a
+      JohnnyScreenSaverView (the existing rendering surface). Must
+      match the `@objc(JohnnyScreensaverViewController)` annotation
+      on the controller class.
+    -->
+    <key>ScreenSaverViewControllerClass</key>
+    <string>JohnnyScreensaverViewController</string>
+
+    <!-- Whether the host should show a "Screen Saver Options…"
+         affordance. Mirrors SSEHasConfigureSheet from the legacy
+         screensaver contract. -->
+    <key>SSEHasConfigureSheet</key>
+    <true/>
+
+    <!-- The host calls animateOneFrame on the view at the screen
+         refresh rate; the screensaver itself is responsible for
+         throttling the engine to whatever pacing the assets
+         require. -->
+    <key>SSENeedsAnimationTimer</key>
+    <true/>
+</dict>
+</plist>
